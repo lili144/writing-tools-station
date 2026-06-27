@@ -8,6 +8,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="zh-CN">
+      <head>
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5265207250332541" crossOrigin="anonymous"></script>
+      </head>
       <body>
         <header style={{
           borderBottom: '1px solid #e0ddd8',
