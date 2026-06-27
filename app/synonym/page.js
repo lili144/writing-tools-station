@@ -1,7 +1,7 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
-const synonymDB = {
+const FALLBACK_DB = {
   '但是': ['然而', '不过', '可是', '只是', '却', '然则'],
   '因为': ['由于', '基于', '鉴于', '出于', '因此'],
   '所以': ['因此', '于是', '故而', '从而', '所以', '结果'],
@@ -48,16 +48,56 @@ export default function Synonym() {
   const [word, setWord] = useState('')
   const [result, setResult] = useState(null)
   const [copied, setCopied] = useState('')
+  const [synonymDB, setSynonymDB] = useState(FALLBACK_DB)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    fetch('/synonyms.json')
+      .then(res => res.json())
+      .then(data => {
+        if (data && Object.keys(data).length > 0) {
+          setSynonymDB(data)
+        }
+        setLoaded(true)
+      })
+      .catch(() => setLoaded(true))
+  }, [])
+
+  const allKeys = Object.keys(synonymDB)
 
   function lookup() {
     const trimmed = word.trim()
     if (!trimmed) return
-    const synonyms = synonymDB[trimmed]
-    if (synonyms) {
-      setResult({ found: true, word: trimmed, synonyms })
-    } else {
-      setResult({ found: false, word: trimmed })
+
+    // 1. 精确匹配
+    if (synonymDB[trimmed]) {
+      setResult({ found: true, word: trimmed, synonyms: synonymDB[trimmed] })
+      return
     }
+
+    // 2. 模糊搜索：输入部分匹配
+    const lowerInput = trimmed.toLowerCase()
+    const matches = allKeys.filter(k => k.includes(trimmed) || trimmed.includes(k))
+    if (matches.length > 0) {
+      const best = matches[0]
+      setResult({
+        found: true,
+        word: best,
+        synonyms: synonymDB[best],
+        fuzzy: true,
+        suggestions: matches.slice(1, 6),
+      })
+      return
+    }
+
+    // 3. 未找到
+    setResult({
+      found: false,
+      word: trimmed,
+      suggestions: allKeys.filter(k =>
+        k.length >= 2 && (k[0] === trimmed[0] || trimmed[0] === k[0])
+      ).slice(0, 8),
+    })
   }
 
   function copy(text) {
@@ -69,12 +109,14 @@ export default function Synonym() {
   return (
     <div className="container" style={{ paddingTop: 48 }}>
       <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>同义词替换建议</h1>
-      <p style={{ color: '#666', marginBottom: 32 }}>输入常用词，获取近义替换，让表达更丰富</p>
+      <p style={{ color: '#666', marginBottom: 32 }}>
+        基于 {allKeys.length} 个常用中文词汇，支持精确查询和模糊搜索
+      </p>
 
       <div style={{ display: 'flex', gap: 12 }}>
         <input
           type="text"
-          placeholder="输入词语，如：但是、很、重要..."
+          placeholder="输入词语，如：但是、很、重要... 支持模糊搜索"
           value={word}
           onChange={e => { setWord(e.target.value); setResult(null) }}
           onKeyDown={e => e.key === 'Enter' && lookup()}
@@ -96,14 +138,17 @@ export default function Synonym() {
       </div>
 
       <div style={{ marginTop: 16, fontSize: 13, color: '#aaa' }}>
-        支持查询：{Object.keys(synonymDB).join('、')}
+        {loaded ? `共收录 ${allKeys.length} 个词汇` : '词库加载中...'}
       </div>
 
       {result && (
         <div className="result-card">
           {result.found ? (
             <>
-              <h3>「{result.word}」的近义替换</h3>
+              <h3>
+                「{result.word}」的近义替换
+                {result.fuzzy && <span style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>（模糊匹配）</span>}
+              </h3>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                 {result.synonyms.map(syn => (
                   <button
@@ -126,13 +171,23 @@ export default function Synonym() {
                   </button>
                 ))}
               </div>
-              <div style={{ fontSize: 13, color: '#aaa', marginTop: 16 }}>
+              {result.suggestions && result.suggestions.length > 0 && (
+                <div style={{ marginTop: 16, fontSize: 13, color: '#888' }}>
+                  相关词汇：{result.suggestions.join('、')}
+                </div>
+              )}
+              <div style={{ fontSize: 13, color: '#aaa', marginTop: 12 }}>
                 点击词语即可复制
               </div>
             </>
           ) : (
             <div style={{ color: '#888', fontSize: 15 }}>
-              暂未收录「{result.word}」，可以尝试：{Object.keys(synonymDB).slice(0, 6).join('、')} 等常用词
+              未收录「{result.word}」
+              {result.suggestions && result.suggestions.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  试试这些词：{result.suggestions.join('、')}
+                </div>
+              )}
             </div>
           )}
         </div>
